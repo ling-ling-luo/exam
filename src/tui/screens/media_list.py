@@ -23,11 +23,7 @@ class MediaListScreen(ModalScreen):
         self.media_files: List[Path] = []
 
     def compose(self) -> ComposeResult:
-        yield Container(
-            Static("📁 素材列表", classes="title"),
-            Static("", id="media_count"),
-            id="media-list-container"
-        )
+        yield Container(id="media-list-container")
 
     def on_mount(self) -> None:
         """加载素材列表"""
@@ -49,6 +45,7 @@ class MediaListScreen(ModalScreen):
 
         container = self.query_one("#media-list-container")
         container.remove_children()
+        container.mount(Static("📁 素材列表", classes="title"))
 
         if not self.media_files:
             container.mount(Static("没有找到可用的视频文件", classes="empty"))
