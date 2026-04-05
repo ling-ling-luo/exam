@@ -11,8 +11,26 @@ from .config import config
 from .logger import logger
 
 
+def _parse_fps(rate_str: str) -> float:
+    """安全解析帧率分数字符串，如 '30000/1001'"""
+    try:
+        parts = rate_str.split("/")
+        if len(parts) == 2:
+            num, den = int(parts[0]), int(parts[1])
+            return num / den if den else 0.0
+        return float(rate_str)
+    except (ValueError, ZeroDivisionError):
+        return 0.0
+
+
+_ffmpeg_available: Optional[bool] = None
+
+
 def check_ffmpeg() -> bool:
-    """检查 ffmpeg 是否可用"""
+    """检查 ffmpeg 是否可用（结果缓存，只 fork 一次）"""
+    global _ffmpeg_available
+    if _ffmpeg_available is not None:
+        return _ffmpeg_available
     try:
         result = subprocess.run(
             [config.ffmpeg_path, "-version"],
@@ -20,9 +38,10 @@ def check_ffmpeg() -> bool:
             text=True,
             timeout=5
         )
-        return result.returncode == 0
+        _ffmpeg_available = result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
+        _ffmpeg_available = False
+    return _ffmpeg_available
 
 
 def get_video_info(path: Path) -> Dict[str, Any]:
@@ -75,7 +94,7 @@ def get_video_info(path: Path) -> Dict[str, Any]:
                 "codec": video_stream.get("codec_name") if video_stream else None,
                 "width": video_stream.get("width") if video_stream else None,
                 "height": video_stream.get("height") if video_stream else None,
-                "fps": eval(video_stream.get("r_frame_rate", "0/1")) if video_stream else None,
+                "fps": _parse_fps(video_stream.get("r_frame_rate", "0/1")) if video_stream else None,
             } if video_stream else None,
             "audio": {
                 "codec": audio_stream.get("codec_name") if audio_stream else None,
@@ -205,6 +224,8 @@ def concat_videos(
     if len(input_paths) == 0:
         raise ExportError("没有输入文件")
 
+    list_file = None
+
     if len(input_paths) == 1:
         # 只有一个文件，直接复制
         cmd = [
@@ -257,7 +278,7 @@ def concat_videos(
         progress_callback(100)
 
     # 清理临时文件
-    if list_file.exists():
+    if list_file and list_file.exists():
         list_file.unlink()
 
 
@@ -323,3 +344,35 @@ def export_project(
         import shutil
         if temp_dir.exists():
             shutil.rmtree(temp_dir)
+
+
+def generate_thumbnail(path: Path, output_path: Path, time: float = 0.0) -> Path:
+    """提取视频指定时间点的帧作为缩略图 JPEG。
+
+    若 output_path 已存在则直接返回（缓存）。
+    """
+    if output_path.exists():
+        return output_path
+
+    if not check_ffmpeg():
+        raise FFmpegNotFoundError()
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cmd = [
+        config.ffmpeg_path,
+        "-y",
+        "-ss", str(time),
+        "-i", str(path),
+        "-vframes", "1",
+        "-q:v", "2",
+        str(output_path),
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if result.returncode != 0:
+            raise ExportError(f"生成缩略图失败: {result.stderr[:200]}")
+        return output_path
+    except subprocess.TimeoutExpired:
+        raise ExportError("生成缩略图超时")
