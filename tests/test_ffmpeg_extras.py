@@ -44,3 +44,48 @@ def test_generate_thumbnail_cached(tmp_path):
 
             generate_thumbnail(Path("input.mp4"), out, time=5.0)
             mock_run.assert_not_called()
+
+
+def test_split_video_720p_params(tmp_path, mocker):
+    mocker.patch("src.utils.ffmpeg.check_ffmpeg", return_value=True)
+    mocker.patch("src.utils.ffmpeg.get_video_info", return_value={"duration": 30.0})
+    mock_popen = mocker.patch("subprocess.Popen")
+    proc = MagicMock()
+    proc.poll.return_value = 0
+    proc.communicate.return_value = ("", "")
+    proc.returncode = 0
+    mock_popen.return_value = proc
+
+    from src.utils.ffmpeg import split_video
+    from src.core.export_params import ExportParams
+
+    params = ExportParams(preset="720p", width=1280, height=720, video_bitrate="4000k")
+    split_video(Path("in.mp4"), tmp_path / "out.mp4", 0, 10, params=params)
+
+    cmd = mock_popen.call_args[0][0]
+    assert "-vf" in cmd
+    assert "scale=1280:720" in cmd
+    assert "-b:v" in cmd
+    assert "4000k" in cmd
+    assert "-crf" not in cmd   # 固定码率时不用 CRF
+
+
+def test_split_video_cancel(tmp_path, mocker):
+    import threading
+    mocker.patch("src.utils.ffmpeg.check_ffmpeg", return_value=True)
+    mocker.patch("src.utils.ffmpeg.get_video_info", return_value={"duration": 30.0})
+    mock_popen = mocker.patch("subprocess.Popen")
+    proc = MagicMock()
+    proc.poll.return_value = None   # always running
+    proc.stderr.readline.return_value = ""
+    proc.communicate.return_value = ("", "")
+    proc.returncode = 0
+    mock_popen.return_value = proc
+
+    cancel = threading.Event()
+    cancel.set()   # cancel immediately
+
+    from src.utils.ffmpeg import split_video
+    split_video(Path("in.mp4"), tmp_path / "out.mp4", 0, 10, cancel_event=cancel)
+
+    proc.terminate.assert_called()

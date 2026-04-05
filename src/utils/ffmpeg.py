@@ -114,18 +114,11 @@ def split_video(
     start_time: float,
     end_time: Optional[float] = None,
     quality: int = 23,
-    progress_callback: Optional[Callable[[float], None]] = None
+    progress_callback: Optional[Callable[[float], None]] = None,
+    params=None,
+    cancel_event: Optional[threading.Event] = None,
 ) -> None:
-    """切分视频
-
-    Args:
-        input_path: 输入文件路径
-        output_path: 输出文件路径
-        start_time: 开始时间（秒）
-        end_time: 结束时间（秒），None 表示到视频末尾
-        quality: 质量 (crf 值)
-        progress_callback: 进度回调函数 (0-100)
-    """
+    """切分视频"""
     if not check_ffmpeg():
         raise FFmpegNotFoundError()
 
@@ -133,68 +126,76 @@ def split_video(
 
     cmd = [
         config.ffmpeg_path,
-        "-y",  # 覆盖输出文件
+        "-y",
         "-ss", str(start_time),
     ]
 
     if duration:
         cmd.extend(["-t", str(duration)])
 
-    cmd.extend([
-        "-i", str(input_path),
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", str(quality),
-        "-c:a", "aac",
-        "-b:a", "128k",
-        str(output_path)
-    ])
+    cmd.extend(["-i", str(input_path), "-c:v", "libx264", "-preset", "medium"])
+
+    # 码率或 CRF（二选一）
+    if params and params.video_bitrate:
+        cmd.extend(["-b:v", params.video_bitrate])
+    else:
+        cmd.extend(["-crf", str(quality)])
+
+    # 分辨率缩放
+    if params and params.width and params.height:
+        cmd.extend(["-vf", f"scale={params.width}:{params.height}"])
+
+    # 帧率
+    if params and params.fps:
+        cmd.extend(["-r", str(params.fps)])
+
+    audio_bitrate = params.audio_bitrate if params else "128k"
+    cmd.extend(["-c:a", "aac", "-b:a", audio_bitrate, str(output_path)])
 
     logger.info(f"执行命令: {' '.join(cmd)}")
 
-    # 使用管道处理进度
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        universal_newlines=True
+        universal_newlines=True,
     )
 
-    # 解析进度
     duration_total = None
     if progress_callback:
-        # 从 ffprobe 获取总时长
         try:
             info = get_video_info(input_path)
             duration_total = info.get("duration", 0)
-        except:
+        except Exception:
             pass
 
-        # 启动进度监控线程
-        def monitor_progress():
-            while process.poll() is None:
-                line = process.stderr.readline()
-                if "time=" in line:
-                    try:
-                        # 解析时间
-                        time_str = line.split("time=")[1].split()[0]
-                        parts = time_str.split(":")
-                        current_time = 0
-                        for p in parts:
-                            current_time = current_time * 60 + float(p)
+    def monitor_progress():
+        while process.poll() is None:
+            if cancel_event and cancel_event.is_set():
+                process.terminate()
+                return
+            line = process.stderr.readline()
+            if "time=" in line and progress_callback:
+                try:
+                    time_str = line.split("time=")[1].split()[0]
+                    parts = time_str.split(":")
+                    current_time = 0.0
+                    for p in parts:
+                        current_time = current_time * 60 + float(p)
+                    if duration_total and duration_total > 0:
+                        progress = min(int(current_time / duration_total * 100), 100)
+                        progress_callback(progress)
+                except Exception:
+                    pass
 
-                        # 计算进度
-                        if duration_total and duration_total > 0:
-                            progress = min(int(current_time / duration_total * 100), 100)
-                            progress_callback(progress)
-                    except:
-                        pass
-
-        monitor_thread = threading.Thread(target=monitor_progress, daemon=True)
-        monitor_thread.start()
+    monitor_thread = threading.Thread(target=monitor_progress, daemon=True)
+    monitor_thread.start()
 
     _, stderr = process.communicate()
+
+    if cancel_event and cancel_event.is_set():
+        return   # 已取消，不报错
 
     if process.returncode != 0:
         logger.error(f"ffmpeg 错误: {stderr}")
@@ -286,31 +287,26 @@ def export_project(
     project,
     output_path: Path,
     quality: int = 23,
-    progress_callback: Optional[Callable[[float], None]] = None
+    progress_callback: Optional[Callable[[float], None]] = None,
+    params=None,
+    cancel_event: Optional[threading.Event] = None,
 ) -> None:
-    """导出项目
-
-    Args:
-        project: Project 对象
-        output_path: 输出文件路径
-        quality: 质量 (crf 值)
-        progress_callback: 进度回调函数 (0-100)
-    """
+    """导出项目"""
     if not project.segments:
         raise ExportError("没有片段可导出")
 
-    # 创建临时文件目录
     temp_dir = output_path.parent / ".temp"
     temp_dir.mkdir(exist_ok=True)
 
     try:
-        # 导出每个片段
         temp_files = []
         total_segments = len(project.segments)
 
         for i, segment in enumerate(project.segments):
-            temp_file = temp_dir / f"segment_{i}_{segment.id}.mp4"
+            if cancel_event and cancel_event.is_set():
+                return
 
+            temp_file = temp_dir / f"segment_{i}_{segment.id}.mp4"
             logger.info(f"导出片段 {i+1}/{total_segments}: {segment}")
 
             split_video(
@@ -321,14 +317,16 @@ def export_project(
                 quality,
                 progress_callback=lambda p, i=i, total=total_segments: progress_callback(
                     (i * 100 + p) / total
-                ) if progress_callback else None
+                ) if progress_callback else None,
+                params=params,
+                cancel_event=cancel_event,
             )
-
             temp_files.append(temp_file)
 
-        # 拼接所有片段
-        logger.info("拼接所有片段...")
+        if cancel_event and cancel_event.is_set():
+            return
 
+        logger.info("拼接所有片段...")
         if progress_callback:
             progress_callback(95)
 
@@ -340,7 +338,6 @@ def export_project(
         logger.info(f"导出完成: {output_path}")
 
     finally:
-        # 清理临时文件
         import shutil
         if temp_dir.exists():
             shutil.rmtree(temp_dir)

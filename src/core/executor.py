@@ -60,15 +60,15 @@ class Executor:
         project: Project,
         output_path: Path,
         quality: int = None,
-        progress_callback: Optional[Callable[[float], None]] = None
+        progress_callback: Optional[Callable[[float], None]] = None,
+        params=None,
+        cancel_event=None,
     ) -> None:
         """导出项目"""
         if not project.segments:
             raise ValidationError("项目没有片段")
 
-        # 确保输出目录存在
         output_path.parent.mkdir(parents=True, exist_ok=True)
-
         validate_output_path(output_path)
 
         if quality is None:
@@ -76,12 +76,7 @@ class Executor:
 
         logger.info(f"开始导出到: {output_path}")
 
-        export_project(
-            project,
-            output_path,
-            quality,
-            progress_callback
-        )
+        export_project(project, output_path, quality, progress_callback, params, cancel_event)
 
     def preview_segment(self, segment: Segment) -> str:
         """生成片段预览信息"""
