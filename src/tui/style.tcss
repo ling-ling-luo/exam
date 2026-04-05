@@ -1,0 +1,128 @@
+/* 基础样式 */
+Screen {
+    background: $surface;
+}
+
+#media-list-container,
+#editor-container,
+#export-container,
+#timeline-container {
+    width: 100%;
+    height: 100%;
+    padding: 1 2;
+}
+
+.title {
+    text-align: center;
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+.dialog-title {
+    text-align: center;
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+.dialog-message {
+    text-align: center;
+    margin: 1 0;
+}
+
+.empty {
+    text-align: center;
+    color: $text-muted;
+    margin: 2 0;
+}
+
+.help {
+    text-align: center;
+    color: $text-muted;
+    margin-top: 1;
+}
+
+#media-dialog-content {
+    width: 80%;
+    height: 80%;
+    padding: 1 2;
+}
+
+/* 输入区域 */
+#input-section {
+    width: 60%;
+    margin: 1 0;
+}
+
+#input-section Label {
+    margin: 1 0 0 0;
+}
+
+#input-section Input {
+    margin-bottom: 1;
+}
+
+/* 预览文本 */
+#preview-text {
+    color: $text;
+    margin: 1 0;
+    text-style: bold;
+}
+
+/* 按钮区域 */
+#button-section,
+#export-buttons,
+#timeline-buttons {
+    width: 100%;
+    height: auto;
+    align: center middle;
+}
+
+#button-section Button,
+#export-buttons Button,
+#timeline-buttons Button {
+    margin: 0 1;
+}
+
+/* 导出进度 */
+#export-progress {
+    margin: 1 0;
+}
+
+#progress-bar {
+    margin: 1 0;
+}
+
+/* DataTable 样式 */
+DataTable {
+    height: 60%;
+}
+
+DataTable > .datatable--cursor {
+    background: $accent;
+}
+
+/* 媒体项 */
+.media-item {
+    margin: 0 0 1 0;
+}
+
+/* 对话框 */
+#confirm-dialog {
+    width: 50%;
+    height: auto;
+    padding: 1 2;
+    border: solid $accent;
+    background: $surface;
+}
+
+#dialog-buttons {
+    width: 100%;
+    align: center middle;
+    margin-top: 1;
+}
+
+#dialog-buttons Button {
+    margin: 0 1;
+}
