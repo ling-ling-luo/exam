@@ -175,7 +175,10 @@ def split_video(
             if cancel_event and cancel_event.is_set():
                 process.terminate()
                 return
-            line = process.stderr.readline()
+            try:
+                line = process.stderr.readline()
+            except (ValueError, OSError):
+                return
             if "time=" in line and progress_callback:
                 try:
                     time_str = line.split("time=")[1].split()[0]

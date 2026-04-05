@@ -27,16 +27,18 @@ class TaskQueue:
         self._notify()
 
     def cancel(self, task_id: str) -> None:
+        notify = False
         with self._lock:
             for task in self._tasks:
                 if task.id == task_id:
                     if task.status == "pending":
                         task.status = "cancelled"
-                        self._notify()
-                        return
+                        notify = True
                     elif task.status == "running" and self._cancel_event:
                         self._cancel_event.set()
-                        return
+                    break
+        if notify:
+            self._notify()
 
     def get_tasks(self) -> List[ExportTask]:
         with self._lock:

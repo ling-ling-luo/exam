@@ -72,7 +72,7 @@ class VideoClipApp(App):
         self.push_screen(EditorScreen(source_path, self.executor), callback=self._on_segment_created)
 
     def navigate_to_export(self) -> None:
-        self.push_screen(ExportScreen(self.project, self.executor))
+        self.push_screen(ExportScreen(self.project, self.executor), callback=lambda _: self._show_media_list())
 
     def add_segment_to_project(self, segment) -> None:
         self.project.add_segment(segment)

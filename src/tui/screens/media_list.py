@@ -50,9 +50,6 @@ class MediaListScreen(ModalScreen):
         container = self.query_one("#media-list-container")
         container.remove_children()
 
-        # 标题
-        container.mount(Static("📁 素材列表", classes="title"))
-
         if not self.media_files:
             container.mount(Static("没有找到可用的视频文件", classes="empty"))
         else:

@@ -1,5 +1,4 @@
 import threading
-import time
 from pathlib import Path
 from unittest.mock import MagicMock
 import pytest
@@ -73,9 +72,11 @@ def test_cancel_running_sets_cancel_event():
 
     received_event = []
     blocking = threading.Event()
+    started = threading.Event()
 
     def fake_export(project, output_path, quality, progress_cb=None, params=None, cancel_event=None):
         received_event.append(cancel_event)
+        started.set()
         blocking.wait(timeout=3.0)
 
     mock_executor = MagicMock()
@@ -87,11 +88,7 @@ def test_cancel_running_sets_cancel_event():
     task = make_task()
     q.add(task)
 
-    # wait for task to start running
-    deadline = time.time() + 3.0
-    while task.status != "running" and time.time() < deadline:
-        time.sleep(0.05)
-
+    started.wait(timeout=3.0)
     assert task.status == "running"
     q.cancel(task.id)
     assert received_event and received_event[0].is_set()
@@ -103,22 +100,28 @@ def test_cancel_running_sets_cancel_event():
 def test_failed_task():
     from src.core.task_queue import TaskQueue
 
-    done = threading.Event()
+    started = threading.Event()
+    finished = threading.Event()
 
     def fake_export(*args, **kwargs):
-        done.set()
+        started.set()
         raise RuntimeError("ffmpeg crashed")
 
     mock_executor = MagicMock()
     mock_executor.export.side_effect = fake_export
 
     q = TaskQueue(mock_executor)
+
+    def on_updated():
+        if q.get_tasks() and q.get_tasks()[0].status in ("failed", "done", "cancelled"):
+            finished.set()
+
+    q.set_on_updated(on_updated)
     q.start()
 
     task = make_task()
     q.add(task)
-    done.wait(timeout=3.0)
-    time.sleep(0.1)
+    finished.wait(timeout=3.0)
 
     q.shutdown()
     assert task.status == "failed"

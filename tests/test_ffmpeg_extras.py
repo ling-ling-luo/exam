@@ -89,3 +89,24 @@ def test_split_video_cancel(tmp_path, mocker):
     split_video(Path("in.mp4"), tmp_path / "out.mp4", 0, 10, cancel_event=cancel)
 
     proc.terminate.assert_called()
+
+
+def test_split_video_fps_param(tmp_path, mocker):
+    mocker.patch("src.utils.ffmpeg.check_ffmpeg", return_value=True)
+    mocker.patch("src.utils.ffmpeg.get_video_info", return_value={"duration": 30.0})
+    mock_popen = mocker.patch("subprocess.Popen")
+    proc = MagicMock()
+    proc.poll.return_value = 0
+    proc.communicate.return_value = ("", "")
+    proc.returncode = 0
+    mock_popen.return_value = proc
+
+    from src.utils.ffmpeg import split_video
+    from src.core.export_params import ExportParams
+
+    params = ExportParams(preset="custom", fps=30.0)
+    split_video(Path("in.mp4"), tmp_path / "out.mp4", 0, 10, params=params)
+
+    cmd = mock_popen.call_args[0][0]
+    assert "-r" in cmd
+    assert "30.0" in cmd

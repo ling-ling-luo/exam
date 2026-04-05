@@ -12,7 +12,7 @@ class ExportParams:
     fps: Optional[float] = None           # None = 保持源帧率
 
 
-PRESETS: dict = {
+PRESETS: dict[str, "ExportParams"] = {
     "original": ExportParams(preset="original"),
     "480p":  ExportParams(preset="480p",  width=854,  height=480,  video_bitrate="1500k"),
     "720p":  ExportParams(preset="720p",  width=1280, height=720,  video_bitrate="4000k"),
