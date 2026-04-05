@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import List
 
 from textual.app import ComposeResult
-from textual.containers import Container
+from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Static, Button, Input, Label
 from textual.events import Key
@@ -63,26 +63,66 @@ class MediaListScreen(ModalScreen):
 
             # 渲染文件列表（简化版）
             for i, f in enumerate(self.media_files):
-                btn = Button(
-                    f"{i+1}. {f.name}",
-                    id=f"media_{i}",
-                    classes="media-item"
+                row = Horizontal(
+                    Button(
+                        f"{i+1}. {f.name}",
+                        id=f"media_{i}",
+                        classes="media-item",
+                    ),
+                    Button("🖼", id=f"thumb_{i}", classes="thumb-btn"),
+                    classes="media-row",
                 )
-                container.mount(btn)
+                container.mount(row)
 
             # 添加说明
             container.mount(
-                Static("\n[Enter] 选择视频  [Q] 退出", classes="help")
+                Static("\n[Enter] 选择视频  [T] 时间线  [E] 导出  [J] 队列  [Q] 退出", classes="help")
             )
+            container.mount(Button("📋 查看时间线 (T)", id="btn_timeline", classes="nav-btn"))
+            container.mount(Button("📤 开始导出 (E)", id="btn_export", classes="nav-btn"))
+            container.mount(Button("📬 任务队列 (J)", id="btn_queue", classes="nav-btn"))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """按钮点击事件"""
         button_id = event.button.id
 
         if button_id and button_id.startswith("media_"):
             index = int(button_id.split("_")[1])
             if 0 <= index < len(self.media_files):
                 self.dismiss(self.media_files[index])
+
+        elif button_id and button_id.startswith("thumb_"):
+            index = int(button_id.split("_")[1])
+            if 0 <= index < len(self.media_files):
+                self._open_thumbnail(self.media_files[index])
+
+        elif button_id == "btn_timeline":
+            self.dismiss("timeline")
+        elif button_id == "btn_export":
+            self.dismiss("export")
+        elif button_id == "btn_queue":
+            self.dismiss("queue")
+
+    def _open_thumbnail(self, path: Path) -> None:
+        import subprocess as sp
+        from ...utils.ffmpeg import get_video_info, generate_thumbnail
+        from ...errors import VideoClipError
+        from ...utils.config import config
+
+        try:
+            info = get_video_info(path)
+            duration = info.get("duration", 0)
+            time_point = duration / 2 if duration > 0 else 0
+
+            thumb_dir = config.output_dir / ".thumbnails"
+            thumb_path = thumb_dir / f"{path.stem}_{time_point:.1f}.jpg"
+
+            generate_thumbnail(path, thumb_path, time=time_point)
+            sp.Popen(["xdg-open", str(thumb_path)])
+            self.notify(f"缩略图: {thumb_path.name}", severity="information")
+        except VideoClipError as e:
+            self.notify(f"预览失败: {e.message}", severity="error")
+        except Exception as e:
+            self.notify(f"预览失败: {e}", severity="error")
 
 
 class MediaListDialog(ModalScreen):
